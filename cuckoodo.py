@@ -4,6 +4,7 @@ import logging
 import re
 import datetime
 import os
+import uuid
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -40,7 +41,7 @@ class Issue(object):
                                                                                 self.assignee, self.interval)
 
 
-def add_issue(bot, update):
+def add_issue(bot, update, job_queue):
     match = pattern_add.match(update.message.text)
 
     if not match:
@@ -56,6 +57,7 @@ def add_issue(bot, update):
     owner = update.message.chat.id
 
     issue = Issue(text, owner, datetime.datetime.today())
+    issue.id = uuid.uuid4()
 
     if interval_declaration is not None and interval_value is not None:
         interval_value = interval_value.strip()
@@ -65,7 +67,7 @@ def add_issue(bot, update):
         if time_units_min.search(interval_value):
             interval_sec += int(time_units_min.search(interval_value).group(1)) * 60
         if time_units_sec.search(interval_value):
-            interval_sec += int(interval_sec.search(interval_value).group(1))
+            interval_sec += int(time_units_sec.search(interval_value).group(1))
         issue.interval = interval_sec
 
     if assignee is not None:
@@ -73,13 +75,20 @@ def add_issue(bot, update):
     else:
         issue.assignee = assignee_all_name
 
+    storage.update({issue.id: issue})
+    logger.info('Add issue ' + str(issue))
+
     if issue.interval is None:
         update.message.reply_text(add_response_text.format(issue.text, issue.assignee))
     else:
+        job = Job(alarm, issue.interval, repeat=False, context=issue.id)
+        job_queue.put(job)
         update.message.reply_text(add_reminder_response_text.format(issue.text, issue.assignee, interval_value))
 
-    logger.info('Add issue ' + str(issue))
 
+def alarm(bot, job):
+    issue = storage.get(job.context)
+    bot.sendMessage(issue.owner, text=issue.text)
 
 def start(bot, update):
     update.message.reply_text('Hi!')
@@ -104,7 +113,7 @@ def main():
     # on different commands - answer in Telegram
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
-    dp.add_handler(CommandHandler("add", add_issue))
+    dp.add_handler(CommandHandler("add", add_issue, pass_job_queue=True))
 
     # # on noncommand i.e message - echo the message on Telegram
     # dp.add_handler(MessageHandler(Filters.text, echo))
