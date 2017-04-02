@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 from telegram.ext import Updater, CommandHandler, Job, MessageHandler, Filters
-import logging
-import re
-import datetime
-import os
-import uuid
+from pymongo import MongoClient
+from datetime import date
+import logging, re, datetime, os, uuid
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -25,7 +23,8 @@ error_text = 'Не понял'
 add_response_text = 'Добавлена заметка {} для {}'
 add_reminder_response_text = 'Добавлено напоминание {} для {}, напомню через {}'
 
-storage = {}
+client = MongoClient("mongodb://localhost:27017")
+storage = client.cuckudoo.issues
 
 
 class Issue(object):
@@ -39,6 +38,16 @@ class Issue(object):
     def __str__(self, *args, **kwargs):
         return "text={}, owner={}, created={}, assignee={}, interval={}".format(self.text, self.owner, self.created,
                                                                                 self.assignee, self.interval)
+
+    def to_dict(self):
+        return {'_id':self._id,'text': self.text, 'owner': self.owner,
+                'created': self.created.replace(tzinfo=datetime.timezone.utc).timestamp(), 'assignee': self.assignee,
+                'interval': self.interval}
+
+    def from_dict(dict):
+        issue = Issue(dict['text'], dict['owner'], dict['assignee'], dict['interval'])
+        issue.created = date.fromtimestamp(dict['created'])
+        return issue
 
 
 def add_issue(bot, update, job_queue):
@@ -57,7 +66,7 @@ def add_issue(bot, update, job_queue):
     owner = update.message.chat.id
 
     issue = Issue(text, owner, datetime.datetime.today())
-    issue.id = uuid.uuid4()
+    issue._id = uuid.uuid4()
 
     if interval_declaration is not None and interval_value is not None:
         interval_value = interval_value.strip()
@@ -71,24 +80,27 @@ def add_issue(bot, update, job_queue):
         issue.interval = interval_sec
 
     if assignee is not None:
-        issue.assignee = assignee.strip().replace('@','')
+        issue.assignee = assignee.strip().replace('@', '')
     else:
         issue.assignee = assignee_all_name
 
-    storage.update({issue.id: issue})
+    storage.insert_one(issue.to_dict())
     logger.info('Add issue ' + str(issue))
 
     if issue.interval is None:
         update.message.reply_text(add_response_text.format(issue.text, issue.assignee))
     else:
-        job = Job(alarm, issue.interval, repeat=False, context=issue.id)
+        job = Job(alarm, issue.interval, repeat=False, context=issue._id)
         job_queue.put(job)
         update.message.reply_text(add_reminder_response_text.format(issue.text, issue.assignee, interval_value))
 
 
 def alarm(bot, job):
-    issue = storage.get(job.context)
-    bot.sendMessage(issue.owner, text=issue.text)
+    for issue_dict in storage.find({'_id': job.context}):
+        issue = Issue.from_dict(issue_dict)
+        bot.sendMessage(issue.owner, text=issue.text)
+        return
+
 
 def start(bot, update):
     update.message.reply_text('Hi!')
