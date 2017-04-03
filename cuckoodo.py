@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from telegram.ext import Updater, CommandHandler, Job, MessageHandler, Filters
 from pymongo import MongoClient
+import pymongo
 from datetime import date
 import logging, re, datetime, os, uuid
 
@@ -12,6 +13,8 @@ logger = logging.getLogger(__name__)
 pattern_add = re.compile(
     '/([a-zA-Zа-яА-Я]{1,15})(\s[^@\s]+)(\s[@a-zA-Z0-9]+)?(\s[a-zA-Zа-яА-Я]+)*((\s\d{1,2}\s[a-zA-Zа-яА-Я]+)*)',
     re.IGNORECASE)
+
+pattern_list = re.compile('/([a-zA-Zа-яА-Я]{1,15})(\s@[a-zA-Zа-яА-Я]*)?')
 
 time_units_hours = re.compile('(\d{1,2})\s(ч(ас)?(а|ов)?)')
 time_units_min = re.compile('(\d{1,2})\s(м(ин)?(ут)?(ы)?)')
@@ -40,14 +43,28 @@ class Issue(object):
                                                                                 self.assignee, self.interval)
 
     def to_dict(self):
-        return {'_id':self._id,'text': self.text, 'owner': self.owner,
-                'created': self.created.replace(tzinfo=datetime.timezone.utc).timestamp(), 'assignee': self.assignee,
-                'interval': self.interval}
+        return {'_id': self._id, 'text': self.text, 'owner': self.owner,
+                'created': self.created, 'assignee': self.assignee,
+                'interval': self.interval, 'done': self.done}
 
     def from_dict(dict):
-        issue = Issue(dict['text'], dict['owner'], dict['assignee'], dict['interval'])
-        issue.created = date.fromtimestamp(dict['created'])
+        issue = Issue(dict['text'], dict['owner'], dict['created'],dict['assignee'], dict['interval'])
+        issue.done = dict['done']
         return issue
+
+    def format(self, idx):
+        return '{}{}. {} @{}\n\r'.format(("\u2705" if self.done is not None else "\uD83D\uDCCC"),
+                                         str(idx), self.text, self.assignee)
+
+    def format_list(issues_dict):
+        idx = 0
+        result = ''
+
+        for issue in issues_dict:
+            idx += 1
+            result += Issue.from_dict(issue).format(idx)
+
+        return result
 
 
 def add_issue(bot, update, job_queue):
@@ -67,6 +84,7 @@ def add_issue(bot, update, job_queue):
 
     issue = Issue(text, owner, datetime.datetime.today())
     issue._id = uuid.uuid4()
+    issue.done = None
 
     if interval_declaration is not None and interval_value is not None:
         interval_value = interval_value.strip()
@@ -102,6 +120,24 @@ def alarm(bot, job):
         return
 
 
+def list(bot, update):
+    match = pattern_list.match(update.message.text)
+    if not match:
+        logger.info('message invalid')
+        update.message.reply_text = error_text
+        return
+
+    assignee = match.group(2)
+    if assignee is not None:
+        assignee = assignee.strip().replace('@', '')
+    else:
+        assignee = assignee_all_name
+
+    output = Issue.format_list(storage.find({'assignee': assignee}).sort('created', pymongo.ASCENDING))
+
+    update.message.reply_text(output)
+
+
 def start(bot, update):
     update.message.reply_text('Hi!')
 
@@ -126,6 +162,7 @@ def main():
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(CommandHandler("add", add_issue, pass_job_queue=True))
+    dp.add_handler(CommandHandler("list", list))
 
     # # on noncommand i.e message - echo the message on Telegram
     # dp.add_handler(MessageHandler(Filters.text, echo))
