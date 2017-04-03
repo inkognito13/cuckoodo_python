@@ -15,6 +15,7 @@ pattern_add = re.compile(
     re.IGNORECASE)
 
 pattern_list = re.compile('/([a-zA-Zа-яА-Я]{1,15})(\s@[a-zA-Zа-яА-Я]*)?')
+pattern_done = re.compile('/([a-zA-Zа-яА-Я]{1,15})\s(\d{1,2})(\s@[a-zA-Zа-яА-Я]*)?')
 
 time_units_hours = re.compile('(\d{1,2})\s(ч(ас)?(а|ов)?)')
 time_units_min = re.compile('(\d{1,2})\s(м(ин)?(ут)?(ы)?)')
@@ -48,7 +49,7 @@ class Issue(object):
                 'interval': self.interval, 'done': self.done}
 
     def from_dict(dict):
-        issue = Issue(dict['text'], dict['owner'], dict['created'],dict['assignee'], dict['interval'])
+        issue = Issue(dict['text'], dict['owner'], dict['created'], dict['assignee'], dict['interval'])
         issue.done = dict['done']
         return issue
 
@@ -138,6 +139,33 @@ def list(bot, update):
     update.message.reply_text(output)
 
 
+def done(bot, update):
+    match = pattern_done.match(update.message.text)
+    if not match:
+        logger.info('message invalid')
+        update.message.reply_text = error_text
+        return
+
+    issue_index = int(match.group(2).strip())
+    assignee = match.group(3)
+    if assignee is not None:
+        assignee = assignee.strip().replace('@', '')
+    else:
+        assignee = assignee_all_name
+
+    issue_dicts = storage.find({'assignee': assignee}).sort('created', pymongo.ASCENDING)
+
+    if issue_dicts.count() < issue_index:
+        update.message.reply_text = error_text
+        return
+    else:
+        issue_id = issue_dicts[issue_index-1]['_id']
+
+    storage.update_one({'_id': issue_id}, {'$set': {'done': True}})
+    output = Issue.format_list(storage.find({'assignee': assignee}).sort('created', pymongo.ASCENDING))
+    update.message.reply_text(output)
+
+
 def start(bot, update):
     update.message.reply_text('Hi!')
 
@@ -163,6 +191,7 @@ def main():
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(CommandHandler("add", add_issue, pass_job_queue=True))
     dp.add_handler(CommandHandler("list", list))
+    dp.add_handler(CommandHandler("done", done))
 
     # # on noncommand i.e message - echo the message on Telegram
     # dp.add_handler(MessageHandler(Filters.text, echo))
