@@ -16,6 +16,7 @@ pattern_add = re.compile(
 
 pattern_list = re.compile('/([a-zA-Zа-яА-Я]{1,15})(\s@[a-zA-Zа-яА-Я]*)?')
 pattern_done = re.compile('/([a-zA-Zа-яА-Я]{1,15})\s(\d{1,2})(\s@[a-zA-Zа-яА-Я]*)?')
+pattern_reassign = re.compile('/([a-zA-Zа-яА-Я]{1,15})\s(\d{1,2})\s(@[a-zA-Zа-яА-Я]+)\s(on|на)\s(@[a-zA-Zа-яА-Я]*)')
 
 time_units_hours = re.compile('(\d{1,2})\s(ч(ас)?(а|ов)?)')
 time_units_min = re.compile('(\d{1,2})\s(м(ин)?(ут)?(ы)?)')
@@ -73,7 +74,7 @@ def add_issue(bot, update, job_queue):
 
     if not match:
         logger.info('message invalid')
-        update.message.reply_text = error_text
+        update.message.reply_text(error_text)
         return
 
     command = match.group(1).strip()
@@ -125,7 +126,7 @@ def list(bot, update):
     match = pattern_list.match(update.message.text)
     if not match:
         logger.info('message invalid')
-        update.message.reply_text = error_text
+        update.message.reply_text(error_text)
         return
 
     assignee = match.group(2)
@@ -143,7 +144,7 @@ def done(bot, update):
     match = pattern_done.match(update.message.text)
     if not match:
         logger.info('message invalid')
-        update.message.reply_text = error_text
+        update.message.reply_text(error_text)
         return
 
     issue_index = int(match.group(2).strip())
@@ -156,13 +157,39 @@ def done(bot, update):
     issue_dicts = storage.find({'assignee': assignee}).sort('created', pymongo.ASCENDING)
 
     if issue_dicts.count() < issue_index:
-        update.message.reply_text = error_text
+        update.message.reply_text(error_text)
         return
     else:
-        issue_id = issue_dicts[issue_index-1]['_id']
+        issue_id = issue_dicts[issue_index - 1]['_id']
 
     storage.update_one({'_id': issue_id}, {'$set': {'done': True}})
     output = Issue.format_list(storage.find({'assignee': assignee}).sort('created', pymongo.ASCENDING))
+    update.message.reply_text(output)
+
+
+def reassign(bot, update):
+    match = pattern_reassign.match(update.message.text)
+    if not match:
+        logger.info('message invalid')
+        update.message.reply_text(error_text)
+        return
+
+    issue_index = int(match.group(2).strip())
+    assignee_old = match.group(3).strip().replace('@', '')
+    assignee_new = match.group(5).strip().replace('@', '')
+
+    issue_dicts = storage.find({'assignee': assignee_old}).sort('created', pymongo.ASCENDING)
+
+    if issue_dicts.count() < issue_index:
+        update.message.reply_text(error_text)
+        return
+    else:
+        issue_id = issue_dicts[issue_index - 1]['_id']
+
+    logger.info('reassign issue {} from {} to {}', issue_index, assignee_old, assignee_new)
+
+    storage.update_one({'_id': issue_id}, {'$set': {'assignee': assignee_new}})
+    output = Issue.format_list(storage.find({'assignee': assignee_new}).sort('created', pymongo.ASCENDING))
     update.message.reply_text(output)
 
 
@@ -192,6 +219,7 @@ def main():
     dp.add_handler(CommandHandler("add", add_issue, pass_job_queue=True))
     dp.add_handler(CommandHandler("list", list))
     dp.add_handler(CommandHandler("done", done))
+    dp.add_handler(CommandHandler("reassign", reassign))
 
     # # on noncommand i.e message - echo the message on Telegram
     # dp.add_handler(MessageHandler(Filters.text, echo))
