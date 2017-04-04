@@ -2,7 +2,6 @@
 from telegram.ext import Updater, CommandHandler, Job, MessageHandler, Filters
 from pymongo import MongoClient
 import pymongo
-from datetime import date
 import logging, re, datetime, os, uuid
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -11,7 +10,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 pattern_add = re.compile(
-    '/([a-zA-Zа-яА-Я]{1,15})(\s[^@\s]+)(\s[@a-zA-Z0-9]+)?(\s[a-zA-Zа-яА-Я]+)*((\s\d{1,2}\s[a-zA-Zа-яА-Я]+)*)',
+    '/([a-zA-Zа-яА-Я]{1,15})((\s[^@\s]+)+)(\s@[a-zA-Z0-9]+)?((\sчерез|in)((\s\d{1,2}\s[a-zA-Zа-яА-Я]+)+))?',
     re.IGNORECASE)
 
 pattern_list = re.compile('/([a-zA-Zа-яА-Я]{1,15})(\s@[a-zA-Zа-яА-Я]*)?')
@@ -77,18 +76,16 @@ def add_issue(bot, update, job_queue):
         update.message.reply_text(error_text)
         return
 
-    command = match.group(1).strip()
     text = match.group(2).strip()
-    assignee = match.group(3)
-    interval_declaration = match.group(4)
-    interval_value = match.group(5)
+    assignee = match.group(4)
+    interval_value = match.group(7)
     owner = update.message.chat.id
 
     issue = Issue(text, owner, datetime.datetime.today())
     issue._id = uuid.uuid4()
     issue.done = None
 
-    if interval_declaration is not None and interval_value is not None:
+    if interval_value is not None:
         interval_value = interval_value.strip()
         interval_sec = 0
         if time_units_hours.search(interval_value):
