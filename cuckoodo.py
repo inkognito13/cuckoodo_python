@@ -68,7 +68,7 @@ class Issue(object):
         return result
 
 
-def add_issue(bot, update, job_queue):
+def add(bot, update, job_queue):
     match = pattern_add.match(update.message.text)
 
     if not match:
@@ -127,12 +127,14 @@ def list(bot, update):
         return
 
     assignee = match.group(2)
+    owner = update.message.chat.id
     if assignee is not None:
         assignee = assignee.strip().replace('@', '')
+        issues_list = storage.find({'assignee': assignee, 'owner': owner}).sort('created', pymongo.ASCENDING)
     else:
-        assignee = assignee_all_name
+        issues_list = storage.find({'owner': owner}).sort('created', pymongo.ASCENDING)
 
-    output = Issue.format_list(storage.find({'assignee': assignee}).sort('created', pymongo.ASCENDING))
+    output = Issue.format_list(issues_list)
 
     update.message.reply_text(output)
 
@@ -146,12 +148,13 @@ def done(bot, update):
 
     issue_index = int(match.group(2).strip())
     assignee = match.group(3)
+    owner = update.message.chat.id
     if assignee is not None:
         assignee = assignee.strip().replace('@', '')
     else:
         assignee = assignee_all_name
 
-    issue_dicts = storage.find({'assignee': assignee}).sort('created', pymongo.ASCENDING)
+    issue_dicts = storage.find({'assignee': assignee, 'owner': owner}).sort('created', pymongo.ASCENDING)
 
     if issue_dicts.count() < issue_index:
         update.message.reply_text(error_text)
@@ -160,7 +163,7 @@ def done(bot, update):
         issue_id = issue_dicts[issue_index - 1]['_id']
 
     storage.update_one({'_id': issue_id}, {'$set': {'done': True}})
-    output = Issue.format_list(storage.find({'assignee': assignee}).sort('created', pymongo.ASCENDING))
+    output = Issue.format_list(storage.find({'assignee': assignee, 'owner': owner}).sort('created', pymongo.ASCENDING))
     update.message.reply_text(output)
 
 
@@ -174,8 +177,9 @@ def reassign(bot, update):
     issue_index = int(match.group(2).strip())
     assignee_old = match.group(3).strip().replace('@', '')
     assignee_new = match.group(5).strip().replace('@', '')
+    owner = update.message.chat.id
 
-    issue_dicts = storage.find({'assignee': assignee_old}).sort('created', pymongo.ASCENDING)
+    issue_dicts = storage.find({'assignee': assignee_old, 'owner': owner}).sort('created', pymongo.ASCENDING)
 
     if issue_dicts.count() < issue_index:
         update.message.reply_text(error_text)
@@ -186,7 +190,36 @@ def reassign(bot, update):
     logger.info('reassign issue {} from {} to {}', issue_index, assignee_old, assignee_new)
 
     storage.update_one({'_id': issue_id}, {'$set': {'assignee': assignee_new}})
-    output = Issue.format_list(storage.find({'assignee': assignee_new}).sort('created', pymongo.ASCENDING))
+    output = Issue.format_list(
+        storage.find({'assignee': assignee_new, 'owner': owner}).sort('created', pymongo.ASCENDING))
+    update.message.reply_text(output)
+
+
+def delete(bot, update):
+    match = pattern_done.match(update.message.text)
+    if not match:
+        logger.info('message invalid')
+        update.message.reply_text(error_text)
+        return
+
+    issue_index = int(match.group(2).strip())
+    assignee = match.group(3)
+    owner = update.message.chat.id
+    if assignee is not None:
+        assignee = assignee.strip().replace('@', '')
+    else:
+        assignee = assignee_all_name
+
+    issue_dicts = storage.find({'assignee': assignee, 'owner': owner}).sort('created', pymongo.ASCENDING)
+
+    if issue_dicts.count() < issue_index:
+        update.message.reply_text(error_text)
+        return
+    else:
+        issue_id = issue_dicts[issue_index - 1]['_id']
+
+    storage.delete_one({'_id': issue_id})
+    output = Issue.format_list(storage.find({'assignee': assignee, 'owner': owner}).sort('created', pymongo.ASCENDING))
     update.message.reply_text(output)
 
 
@@ -212,11 +245,49 @@ def main():
 
     # on different commands - answer in Telegram
     dp.add_handler(CommandHandler("start", start))
+
     dp.add_handler(CommandHandler("help", help))
-    dp.add_handler(CommandHandler("add", add_issue, pass_job_queue=True))
+    dp.add_handler(CommandHandler("help@cuckudoobot", help))
+    dp.add_handler(CommandHandler("п", help))
+    dp.add_handler(CommandHandler("помощь", help))
+    dp.add_handler(CommandHandler("хелп", help))
+    dp.add_handler(CommandHandler("памагите", help))
+    dp.add_handler(CommandHandler("ничегонепонимаю", help))
+
+    dp.add_handler(CommandHandler("add", add, pass_job_queue=True))
+    dp.add_handler(CommandHandler("добавить", add, pass_job_queue=True))
+    dp.add_handler(CommandHandler("задача", add, pass_job_queue=True))
+    dp.add_handler(CommandHandler("еще", add, pass_job_queue=True))
+    dp.add_handler(CommandHandler("напомни", add, pass_job_queue=True))
+    dp.add_handler(CommandHandler("напомнить", add, pass_job_queue=True))
+
     dp.add_handler(CommandHandler("list", list))
+    dp.add_handler(CommandHandler("list@cuckudoobot", list))
+    dp.add_handler(CommandHandler("с", list))
+    dp.add_handler(CommandHandler("список", list))
+    dp.add_handler(CommandHandler("все", list))
+    dp.add_handler(CommandHandler("всё", list))
+
     dp.add_handler(CommandHandler("done", done))
+    dp.add_handler(CommandHandler("г", done))
+    dp.add_handler(CommandHandler("готово", done))
+    dp.add_handler(CommandHandler("готов", done))
+    dp.add_handler(CommandHandler("сделаль", done))
+    dp.add_handler(CommandHandler("сделать", done))
+    dp.add_handler(CommandHandler("выполнено", done))
+    dp.add_handler(CommandHandler("разделался", done))
+
+    dp.add_handler(CommandHandler("del", delete))
+    dp.add_handler(CommandHandler("delete", delete))
+    dp.add_handler(CommandHandler("у", delete))
+    dp.add_handler(CommandHandler("удалить", delete))
+    dp.add_handler(CommandHandler("убрать", delete))
+
     dp.add_handler(CommandHandler("reassign", reassign))
+    dp.add_handler(CommandHandler("assignee", reassign))
+    dp.add_handler(CommandHandler("назначить", reassign))
+    dp.add_handler(CommandHandler("переназначить", reassign))
+    dp.add_handler(CommandHandler("перевестистрелки", reassign))
 
     # # on noncommand i.e message - echo the message on Telegram
     # dp.add_handler(MessageHandler(Filters.text, echo))
