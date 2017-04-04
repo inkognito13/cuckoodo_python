@@ -23,7 +23,44 @@ time_units_sec = re.compile('(\d{1,2})\s(с(ек)?(унд)?(ы|у)?)')
 
 assignee_all_name = 'all'
 
-error_text = 'Не понял'
+error_text = 'Не понял! /help'
+sww_text = "\uD83D\uDCA9 Что-то пошло не так! \n\rПопробуй еще раз."
+help_text = "Привет! Я кукуду-туду-лист с напоминалками, буду куковать тебе о важных вещах, чтобы ты не забыл.\n"\
+            "Используй команду /help для помощи В)\n" \
+            "Список моих команд:\n" \
+            "   [] -- опционально. По умолчанию -- весь чат.\n" \
+            "/add - добавить задачу\n" \
+            "    /напомнить купить мяса @username\n" \
+            "    /добавить заехать за Петей\n" \
+            "/list - вывести все задачи\n" \
+            "    /список\n" \
+            "    /список @username\n" \
+            "/done - пометить задачу как готовую\n" \
+            "    /готово 1\n" \
+            "/del - удалить задачу\n" \
+            "    /удалить 1\n" \
+            "/assign - назначить задачу\n" \
+            "    /назначить 1 [@username]\n" \
+            "/help - вывести эту помощь\n" \
+            "/fullhelp - полный список команд\n" \
+            "/eng - if you speak only english, use this command. But we recommend use russian text(and fullhelp)."
+full_help_text = "/add: добавить, задача, напомнить, напомни, д\n" \
+            "/list: список, все, всё, в\n" \
+            "/done: готово, готов, сделать, сделано, сделаль, выполнено, разделался, г\n" \
+            "/del: удалить, убрать, у\n" \
+            "/assign: назначить, навесить, перевестистрелки, н\n" \
+            "/help помощь, хелп, памагите, ничегонепонимаю, п\n" \
+            "/fullhelp: всяпомощь, ещепомощь, команды, ещекоманды, в\n" \
+            "/eng: english, englishplease"
+eng_help_text = "add - add an issue\n" \
+            "list - view a list with all issues\n" \
+            "done - mark the issue as done by id\n" \
+            "del - delete the issue by id\n" \
+            "assign - assign issue\n" \
+            "help - print help\n" \
+            "fullhelp - print full help\n" \
+            "eng - print help in english"
+
 add_response_text = 'Добавлена заметка {} для {}'
 add_reminder_response_text = 'Добавлено напоминание {} для {}, напомню через {}'
 
@@ -228,11 +265,19 @@ def start(bot, update):
 
 
 def help(bot, update):
-    update.message.reply_text('Help!')
+    update.message.reply_text(help_text)
+
+
+def fullhelp(bot, update):
+    update.message.reply_text(full_help_text)
+
+def englishhelp(bot, update):
+    update.message.reply_text(eng_help_text)
 
 
 def error(bot, update, error):
     logger.warn('Update "%s" caused error "%s"' % (update, error))
+    update.message.reply_text(sww_text)
 
 
 def main():
@@ -253,6 +298,19 @@ def main():
     dp.add_handler(CommandHandler("хелп", help))
     dp.add_handler(CommandHandler("памагите", help))
     dp.add_handler(CommandHandler("ничегонепонимаю", help))
+
+    dp.add_handler(CommandHandler("fullhelp", fullhelp))
+    dp.add_handler(CommandHandler("fullhelp@cuckudoobot", fullhelp))
+    dp.add_handler(CommandHandler("в", fullhelp))
+    dp.add_handler(CommandHandler("всяпомощь", fullhelp))
+    dp.add_handler(CommandHandler("ещепомощь", fullhelp))
+    dp.add_handler(CommandHandler("команды", fullhelp))
+    dp.add_handler(CommandHandler("ещекоманды", fullhelp))
+
+    dp.add_handler(CommandHandler("eng", englishhelp))
+    dp.add_handler(CommandHandler("eng@cuckudoobot", englishhelp))
+    dp.add_handler(CommandHandler("english", englishhelp))
+    dp.add_handler(CommandHandler("englishplease", englishhelp))
 
     dp.add_handler(CommandHandler("add", add, pass_job_queue=True))
     dp.add_handler(CommandHandler("добавить", add, pass_job_queue=True))
